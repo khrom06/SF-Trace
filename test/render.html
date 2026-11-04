@@ -68,6 +68,11 @@
   // `entity` shorthand + language
   el = mount("sf-trace-card", { entity: "light.a" }, Object.assign(mk([]), { language: "fr" })); await sleep(50);
   check(text(el).includes("Aucun changement"), "French empty state: " + text(el));
+  T.i18n(X.i18n, "trace");
+  for (const [lang, word] of [["ar", "لا تغييرات"], ["zh", "没有变化"], ["ru", "Нет изменений"], ["nl", "Geen wijziging"], ["it", "Nessuna modifica"], ["pt", "Sem alterações"], ["pl", "Brak zmian"]]) {
+    const e = mount("sf-trace-card", { entity: "light.a", language: lang }, mk([])); await sleep(40); check(text(e).includes(word), "language option " + lang + ": " + text(e));
+    eq(e.getAttribute("dir"), lang === "ar" ? "rtl" : "ltr", "text direction for " + lang);
+  }
   done();
 })().catch((e) => { document.getElementById("result").textContent = JSON.stringify({ ok: false, checks: 0, failures: ["exception: " + e.message + " " + (e.stack || "").split("\n")[1]] }); });
 </script>

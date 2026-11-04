@@ -7,6 +7,13 @@ const TR_I18N = {
         err: "Logbuch nicht lesbar", device: "das Gerät selbst", user: "jemand", ago: "vor {age}", via: "über" },
   es: { title: "¿Quién lo hizo?", all: "Todo", people: "Personas", automations: "Automatizaciones", devices: "Dispositivos", none: "Sin cambios en las últimas {h} h", loading: "Cargando…",
         err: "No se puede leer el registro", device: "el propio dispositivo", user: "alguien", ago: "hace {age}", via: "vía" },
+  nl: {"title": "Wie deed dat?", "all": "Alles", "people": "Personen", "automations": "Automatiseringen", "devices": "Apparaten", "none": "Geen wijziging in de afgelopen {h} u", "loading": "Laden…", "err": "Logboek niet leesbaar", "device": "het apparaat zelf", "user": "iemand", "ago": "{age} geleden", "via": "via"},
+  it: {"title": "Chi l'ha fatto?", "all": "Tutto", "people": "Persone", "automations": "Automazioni", "devices": "Dispositivi", "none": "Nessuna modifica nelle ultime {h} h", "loading": "Caricamento…", "err": "Registro illeggibile", "device": "il dispositivo stesso", "user": "qualcuno", "ago": "{age} fa", "via": "tramite"},
+  pt: {"title": "Quem fez isto?", "all": "Tudo", "people": "Pessoas", "automations": "Automações", "devices": "Dispositivos", "none": "Sem alterações nas últimas {h} h", "loading": "A carregar…", "err": "Registo ilegível", "device": "o próprio dispositivo", "user": "alguém", "ago": "há {age}", "via": "via"},
+  pl: {"title": "Kto to zrobił?", "all": "Wszystko", "people": "Osoby", "automations": "Automatyzacje", "devices": "Urządzenia", "none": "Brak zmian w ostatnich {h} h", "loading": "Ładowanie…", "err": "Nie można odczytać dziennika", "device": "samo urządzenie", "user": "ktoś", "ago": "{age} temu", "via": "przez"},
+  ru: {"title": "Кто это сделал?", "all": "Все", "people": "Люди", "automations": "Автоматизации", "devices": "Устройства", "none": "Нет изменений за последние {h} ч", "loading": "Загрузка…", "err": "Не удалось прочитать журнал", "device": "само устройство", "user": "кто-то", "ago": "{age} назад", "via": "через"},
+  zh: {"title": "是谁做的？", "all": "全部", "people": "人员", "automations": "自动化", "devices": "设备", "none": "过去 {h} 小时内没有变化", "loading": "加载中…", "err": "无法读取日志", "device": "设备自身", "user": "某人", "ago": "{age}前", "via": "通过"},
+  ar: {"title": "من فعل ذلك؟", "all": "الكل", "people": "الأشخاص", "automations": "الأتمتة", "devices": "الأجهزة", "none": "لا تغييرات خلال آخر {h} ساعة", "loading": "جارٍ التحميل…", "err": "تعذّرت قراءة السجل", "device": "الجهاز نفسه", "user": "شخص ما", "ago": "منذ {age}", "via": "عبر"},
 };
 const TR_MIN_INTERVAL = 15000;   // never query the logbook more often than this, however many state changes arrive
 
@@ -24,7 +31,7 @@ class SFTraceCard extends SFCard {
     if (s !== this._trSig) { this._trSig = s; this._dirty = true; }   // a watched entity changed -> logbook is worth re-reading (throttled)
     return s;
   }
-  title() { return this._cfg.title || sfT(TR_I18N, sfLang(this._hass), "title"); }
+  title() { return this._cfg.title || sfT(TR_I18N, this._lang(), "title"); }
   _draw() { this._maybeFetch(); super._draw(); }
   _maybeFetch() {
     if (!this._cfg || !this._hass || this._inflight || !this._dirty || !this._cfg.entities.length) return;
@@ -49,7 +56,7 @@ class SFTraceCard extends SFCard {
     .who.user { color:var(--sf-cyan); } .who.automation, .who.entity { color:var(--sf-amber); } .who.service { color:var(--sf-violet); } .who.device { color:var(--sf-grey); }
     .det { grid-column:2 / 4; color:var(--sf-dim); font-size:10.5px; line-height:1.6; margin-top:-2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }`; }
   body() {
-    const L = sfLang(this._hass), t = (k, v) => sfT(TR_I18N, L, k, v), c = this._cfg;
+    const L = this._lang(), t = (k, v) => sfT(TR_I18N, L, k, v), c = this._cfg;
     if (!c.entities.length) return `<div class="empty">entities: [ … ]</div>`;
     const users = trUsers(this._hass ? this._hass.states : {}, this._extraUsers);
     const names = {}; for (const id of c.entities) { const s = this._hass && this._hass.states[id]; if (s) names[id] = sfName(s, id); }
@@ -75,4 +82,4 @@ class SFTraceCard extends SFCard {
   }
 }
 sfRegister("sf-trace-card", SFTraceCard, "SF Trace", "Shows who or what changed an entity: a person, an automation, a service call, or the device itself.");
-window.__sfTrace = { origin: trOrigin, rows: trRows, users: trUsers, when: trWhen };   // exposed for the test page only
+window.__sfTrace = { i18n: TR_I18N, origin: trOrigin, rows: trRows, users: trUsers, when: trWhen };   // exposed for the test page only

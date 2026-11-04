@@ -45,7 +45,7 @@ Filter buttons narrow the list to *People*, *Automations* or *Devices*. Tap a ro
 
 **Names.** People are resolved from `person.*` entities. For other users (Node-RED, the Supervisor, add-ons…) the card also tries the admin-only user list; if you are not an administrator those show as "someone".
 
-Languages: en, fr, de, es (follows the Home Assistant language).
+Languages: en, fr, es, de, nl, it, pt, pl, ru, zh, ar (right-to-left for Arabic), the same eleven as SF Cards. The card follows the Home Assistant language; set `language: xx` on a card to force one.
 
 ## Safe by design
 
@@ -56,7 +56,7 @@ Languages: en, fr, de, es (follows the Home Assistant language).
 ## Tests
 
 ```bash
-./test/run.sh   # build check + 34 render checks in headless Chrome, including a real logbook entry shape
+./test/run.sh   # build check + 335 render checks in headless Chrome, including a real logbook entry shape
 ```
 
 ---
