@@ -41,7 +41,7 @@ class SFTraceCard extends SFCard {
   get css() { return `
     .flt { display:flex; flex-wrap:wrap; gap:6px; margin:-4px 0 10px; } .flt button { font-size:11px; padding:3px 10px; border-radius:20px; }
     .flt button.on { background:rgb(var(--sf-cyan-rgb) / .28); border-color:var(--sf-cyan); color:var(--sf-strong); }
-    .row { display:grid; grid-template-columns:76px 1fr auto; gap:4px 10px; align-items:center; padding:8px 4px; border-top:1px solid rgb(var(--sf-cyan-rgb) / .12); }
+    .row { display:grid; grid-template-columns:minmax(76px,max-content) 1fr auto; gap:4px 10px; align-items:center; padding:8px 4px; border-top:1px solid rgb(var(--sf-cyan-rgb) / .12); }
     .row:first-of-type { border-top:0; } .row:hover { background:rgb(var(--sf-cyan-rgb) / .06); }
     .t { color:var(--sf-dim); font-size:11px; line-height:1.2; white-space:nowrap; } .t b { display:block; color:var(--sf-text); font-weight:400; font-size:12px; }
     .nm { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sf-strong); } .nm small { color:var(--sf-dim); margin-left:6px; }
