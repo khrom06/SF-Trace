@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SF Trace — live demo (fake data)</title>
+<style>body{margin:0;padding:24px;background:#0a1220;font-family:system-ui,sans-serif;color:#cfefff}
+h1{font:700 14px Orbitron,sans-serif;letter-spacing:.2em;color:#00e5ff} .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;max-width:1000px}
+.l{background:#e9f1f8;padding:14px;border-radius:14px}</style>
+<h1>SF TRACE · DEMO WITH FAKE DATA</h1><div class="g" id="g"></div>
+<script src="sf-trace.js"></script>
+<script>
+const s = (id, name) => ({ entity_id: id, state: "on", attributes: { friendly_name: name }, last_changed: new Date().toISOString() });
+const now = Date.now() / 1000;
+const events = [
+  { when: now - 240, entity_id: "climate.nursery", state: "off", context_user_id: "u1", context_event_type: "automation_triggered", context_name: "Thermal mode sync" },
+  { when: now - 1500, entity_id: "climate.nursery", state: "heat", context_user_id: "u2", context_domain: "climate", context_service: "set_hvac_mode", context_event_type: "call_service" },
+  { when: now - 3900, entity_id: "light.hall", state: "on", context_event_type: "state_changed", context_entity_id_name: "Hall motion" },
+  { when: now - 7300, entity_id: "light.hall", state: "off", context_user_id: "u9", context_domain: "light", context_service: "turn_off", context_event_type: "call_service" },
+  { when: now - 9000, entity_id: "switch.heater", state: "on" },
+  { when: now - 21000, entity_id: "climate.nursery", state: "dry" },
+];
+const hass = (dark) => ({ language: "en", themes: { darkMode: dark },
+  states: { "climate.nursery": s("climate.nursery", "Nursery heating"), "light.hall": s("light.hall", "Hall light"), "switch.heater": s("switch.heater", "Towel heater"),
+    "person.alex": { entity_id: "person.alex", state: "home", attributes: { user_id: "u2", friendly_name: "Alex" } }, "person.sam": { entity_id: "person.sam", state: "home", attributes: { user_id: "u1", friendly_name: "Sam" } } },
+  callWS: (m) => Promise.resolve(m.type === "logbook/get_events" ? events : [{ id: "u9", name: "Node-RED" }]), callService() {} });
+const mk = (cfg, light) => { const w = document.createElement("div"); if (light) w.className = "l"; const el = document.createElement("sf-trace-card"); w.appendChild(el); el.setConfig(cfg); el.hass = hass(!light); document.getElementById("g").appendChild(w); };
+const cfg = { entities: ["climate.nursery", "light.hall", "switch.heater"], limit: 6 };
+mk(cfg); mk({ ...cfg, theme: "light" }, true);
+</script></html>

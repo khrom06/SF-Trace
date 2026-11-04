@@ -1,0 +1,73 @@
+<!doctype html><meta charset="utf-8"><body><pre id="result">pending</pre>
+<script src="lib.js"></script><script src="../dist/sf-trace.js"></script>
+<script>
+(async () => {
+  const { check, eq, state, ago, hass, mount, text, q, done, sleep } = T, X = window.__sfTrace;
+  const nowS = Date.now() / 1000;
+
+  // --- origin classification ---
+  const users = { u1: "Alex", u2: "Sam" };
+  eq(X.origin({ context_event_type: "automation_triggered", context_name: "Night mode", context_entity_id: "automation.night" }, users).kind, "automation", "automation");
+  eq(X.origin({ context_event_type: "automation_triggered", context_name: "Night mode" }, users).label, "Night mode", "automation label");
+  let o = X.origin({ context_user_id: "u1", context_event_type: "call_service", context_domain: "light", context_service: "turn_on" }, users);
+  eq([o.kind, o.label, o.detail], ["user", "Alex", "light.turn_on"], "user via service");
+  o = X.origin({ context_user_id: "ghost" }, users); check(o.kind === "user" && o.unknown, "unknown user id stays a user, flagged");
+  eq(X.origin({ context_event_type: "call_service", context_domain: "switch", context_service: "toggle" }, users).label, "switch.toggle", "service call without user");
+  eq(X.origin({ context_event_type: "state_changed", context_entity_id_name: "Hall motion" }, users).kind, "entity", "caused by another entity");
+  eq(X.origin({}, users).kind, "device", "no context = the device itself");
+  eq(X.origin({ context_domain: "script", context_name: "Goodnight" }, users).kind, "automation", "script counts as automation");
+  eq(X.origin({ context_user_id: "u1", context_event_type: "automation_triggered", context_name: "A" }, users).kind, "automation", "automation wins over the user id it inherits");
+
+  // --- timestamps, users, rows ---
+  eq(X.when(1700000000), 1700000000000, "seconds -> ms"); eq(X.when(1700000000000), 1700000000000, "ms kept");
+  check(Number.isFinite(X.when("2026-01-01T00:00:00Z")), "iso string"); check(Number.isNaN(X.when(undefined)), "garbage -> NaN");
+  const st = { "person.alex": state("person.alex", "home", { user_id: "u1", friendly_name: "Alex" }) };
+  eq(X.users(st, { u9: "Admin" }), { u9: "Admin", u1: "Alex" }, "users merged");
+  const E = [
+    { when: nowS - 600, entity_id: "light.a", name: "Lamp", state: "on", context_user_id: "u1" },
+    { when: nowS - 60, entity_id: "light.a", name: "Lamp", state: "off", context_event_type: "automation_triggered", context_name: "Night" },
+    { when: nowS - 3000, entity_id: "light.a", name: "Lamp", state: "on" },
+    { when: "bad", entity_id: "light.a", state: "on" }, null, { when: nowS, state: "on" },
+    { when: nowS - 10, entity_id: "light.other", name: "Other", state: "on" },
+  ];
+  let rows = X.rows(E, { users, limit: 10, entities: new Set(["light.a"]) });
+  eq(rows.map((r) => r.what), ["off", "on", "on"], "newest first, junk and other entities dropped");
+  eq(X.rows(E, { users, group: "people", entities: new Set(["light.a"]) }).length, 1, "people filter");
+  eq(X.rows(E, { users, limit: 2, entities: new Set(["light.a"]) }).length, 2, "limit");
+  eq(X.rows("nope", { users }).length, 0, "non-array input");
+  eq(X.rows([{ when: nowS, entity_id: "light.z", state: "on" }], { users, names: { "light.z": "Friendly" } })[0].name, "Friendly", "name falls back to the friendly name (real logbook entries have no name)");
+  // real entry shape captured from a Home Assistant 2026.10 logbook (ids anonymised)
+  eq(X.origin({ state: "off", entity_id: "climate.x", when: 1793825398.2, context_user_id: "u1", context_domain: "climate", context_service: "turn_off", context_event_type: "call_service" }, users).detail, "climate.turn_off", "real call_service entry");
+
+  // --- card ---
+  const mk = (events, extra = {}) => hass([state("light.a", "on", { friendly_name: "Lamp" }), ...Object.values(st)], { wsResult: (m) => m.type === "logbook/get_events" ? events : (extra.auth || []), ...extra });
+  let h = mk(E.slice(0, 3).concat([{ when: nowS - 5, entity_id: "light.a", name: "Lamp <i>x</i>", state: "on", context_user_id: "u1", context_event_type: "call_service", context_domain: "light", context_service: "turn_on" }]));
+  let el = mount("sf-trace-card", { entities: ["light.a"] }, h);
+  await sleep(50);
+  const ws = h.ws.filter((m) => m.type === "logbook/get_events");
+  eq(ws.length, 1, "one logbook query on load"); eq(ws[0].entity_ids, ["light.a"], "query is scoped to the configured entities");
+  check(text(el).includes("Alex") && text(el).includes("Night"), "people and automation shown: " + text(el));
+  check(text(el).includes("the device itself"), "device origin wording");
+  check(el.shadowRoot.innerHTML.includes("&lt;i&gt;x"), "names escaped"); check(!el.shadowRoot.querySelector("i:not(.c)"), "no injected markup");
+  let got; el.addEventListener("hass-more-info", (e) => { got = e.detail.entityId; }); q(el, '[data-act="info"]')[0].click(); eq(got, "light.a", "row opens more-info");
+  q(el, '[data-act="grp"][data-g="automations"]')[0].click();
+  eq(q(el, ".row").length, 1, "group filter applied on click"); check(q(el, ".who.automation").length === 1, "only the automation row remains");
+
+  // throttle: a storm of state changes causes at most one extra query, and not before the minimum interval
+  for (let i = 0; i < 100; i++) { const h2 = Object.assign({}, h, { states: { ...h.states, "light.a": state("light.a", i % 2 ? "on" : "off", {}, { last_changed: new Date(Date.now() + i).toISOString() }) } }); el.hass = h2; }
+  await sleep(50);
+  eq(h.ws.filter((m) => m.type === "logbook/get_events").length, 1, "no query storm: still 1 within the minimum interval");
+
+  // failure is shown, not thrown
+  const bad = hass([state("light.a", "on")], { wsResult: (m) => { throw new Error("boom"); } });
+  el = mount("sf-trace-card", { entities: ["light.a"] }, bad); await sleep(50);
+  check(text(el).includes("Could not read the logbook"), "error state: " + text(el));
+  // empty config and invalid config
+  el = mount("sf-trace-card", { entities: [] }, hass([])); check(text(el).includes("entities"), "empty config hint");
+  let threw = false; try { mount("sf-trace-card", null); } catch (e) { threw = true; } check(threw, "invalid config rejected");
+  // `entity` shorthand + language
+  el = mount("sf-trace-card", { entity: "light.a" }, Object.assign(mk([]), { language: "fr" })); await sleep(50);
+  check(text(el).includes("Aucun changement"), "French empty state: " + text(el));
+  done();
+})().catch((e) => { document.getElementById("result").textContent = JSON.stringify({ ok: false, checks: 0, failures: ["exception: " + e.message + " " + (e.stack || "").split("\n")[1]] }); });
+</script>
