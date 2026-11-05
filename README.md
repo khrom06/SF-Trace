@@ -15,8 +15,10 @@ Same HUD look as [SF Cards](https://github.com/khrom06/SF-Cards): the cards sit 
 
 ## Install
 
-1. HACS → ⋮ → *Custom repositories* → add `https://github.com/khrom06/SF-Trace`, category **Dashboard**; install.
+1. HACS → search for **SF Trace** → *Download*.
 2. Reload the browser (HACS registers the resource for you).
+
+Not listed yet in your HACS? Add it manually: HACS → ⋮ → *Custom repositories* → `https://github.com/khrom06/SF-Trace`, category **Dashboard**, then install.
 
 ## Configuration
 
