@@ -1,5 +1,6 @@
 {
   "name": "sf-trace",
+  "version": "1.0.1",
   "private": true,
   "description": "Build tooling for SF-Trace (no runtime dependency: HACS loads dist/ directly, no bundler).",
   "scripts": {
