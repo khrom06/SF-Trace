@@ -3,6 +3,7 @@
 **Who (or what) just changed that?** A Lovelace card that answers the question every Home Assistant owner asks at least once a week: *"why did this turn off?"* It reads the logbook and tells you, for each change, whether it was **a person, an automation, a service call, another entity, or the device itself**.
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![Live demo](https://img.shields.io/badge/live-demo-00e5ff)](https://khrom06.github.io/SF-Trace/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Add to HACS](https://img.shields.io/badge/HACS-add%20this%20repository-00e5ff)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khrom06&repository=SF-Trace&category=dashboard)
 
