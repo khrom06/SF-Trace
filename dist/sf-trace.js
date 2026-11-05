@@ -1,17 +1,10 @@
-(() => {
-"use strict";
-// SF-kit 1.0 — shared design tokens and card base class. The same file ships in every SF-* card repository (keep them identical).
-// Visual language: the palette and HUD frame of SF-Cards (https://github.com/khrom06/SF-Cards), so cards from different repos sit side by side.
-const SF_VARS_DARK = `--sf-cyan:#00e5ff; --sf-amber:#ffb300; --sf-red:#ff3355; --sf-green:#2bff88; --sf-grey:#5b6b7d; --sf-text:#cfefff; --sf-dim:#7fa3bd;
+(()=>{"use strict";const x=`
+  :host { display:block; --sf-cyan:#00e5ff; --sf-amber:#ffb300; --sf-red:#ff3355; --sf-green:#2bff88; --sf-grey:#5b6b7d; --sf-text:#cfefff; --sf-dim:#7fa3bd;
     --sf-cyan-rgb:0 229 255; --sf-amber-rgb:255 179 0; --sf-red-rgb:255 51 85; --sf-green-rgb:43 255 136; --sf-fg-rgb:255 255 255; --sf-strong:#fff;
-    --sf-bg0:#0d2440; --sf-bg1:#06101d; --sf-bg2:#03080f; --sf-on-accent:#03080f; --sf-violet:#b388ff; --sf-violet-rgb:179 136 255;`;
-const SF_VARS_LIGHT = `--sf-cyan:#00798f; --sf-amber:#a85f00; --sf-red:#c8173d; --sf-green:#08783f; --sf-grey:#52687a; --sf-text:#1c3a4e; --sf-dim:#37536a;
+    --sf-bg0:#0d2440; --sf-bg1:#06101d; --sf-bg2:#03080f; --sf-on-accent:#03080f; --sf-violet:#b388ff; --sf-violet-rgb:179 136 255; }
+  :host([theme="light"]) { --sf-cyan:#00798f; --sf-amber:#a85f00; --sf-red:#c8173d; --sf-green:#08783f; --sf-grey:#52687a; --sf-text:#1c3a4e; --sf-dim:#37536a;
     --sf-cyan-rgb:0 121 143; --sf-amber-rgb:168 95 0; --sf-red-rgb:200 23 61; --sf-green-rgb:8 120 63; --sf-fg-rgb:4 40 62; --sf-strong:#04141f;
-    --sf-bg0:#fbfdff; --sf-bg1:#eef5fb; --sf-bg2:#e2edf6; --sf-on-accent:#fff; --sf-violet:#6a3bc4; --sf-violet-rgb:106 59 196;`;
-
-const SF_BASE_CSS = `
-  :host { display:block; ${SF_VARS_DARK} }
-  :host([theme="light"]) { ${SF_VARS_LIGHT} }
+    --sf-bg0:#fbfdff; --sf-bg1:#eef5fb; --sf-bg2:#e2edf6; --sf-on-accent:#fff; --sf-violet:#6a3bc4; --sf-violet-rgb:106 59 196; }
   * { box-sizing:border-box; }
   :host([dir="rtl"]) .hud { direction:rtl; } :host([dir="rtl"]) svg, :host([dir="rtl"]) .track, :host([dir="rtl"]) input[type=range] { direction:ltr; }
   .hud { position:relative; overflow:hidden; border-radius:14px; padding:16px 18px 18px; color:var(--sf-text);
@@ -37,162 +30,8 @@ const SF_BASE_CSS = `
   button:hover { background:rgb(var(--sf-cyan-rgb) / .2); }
   @media (pointer: coarse) { button, .row { min-height:40px; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; } }
-`;
-
-const sfEsc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const sfNum = (v, d = NaN) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
-const sfLang = (hass) => String((hass && (hass.locale?.language || hass.language)) || "en").slice(0, 2).toLowerCase();
-// Translation lookup with English fallback: sfT(dict, lang, key, {n: 3}) replaces {n}.
-const sfT = (dict, lang, key, vars) => {
-  let s = (dict[lang] && dict[lang][key]) ?? (dict.en && dict.en[key]) ?? key;
-  // In right-to-left text, numbers with Latin units are isolated so "5 min" is not scrambled by the bidi algorithm.
-  if (vars) for (const k of Object.keys(vars)) s = s.split("{" + k + "}").join(lang === "ar" ? "\u2066" + vars[k] + "\u2069" : String(vars[k]));
-  return s;
-};
-// Human duration from seconds: "45 s", "12 min", "3 h 05", "2 d 4 h".
-const sfAge = (sec) => {
-  if (!Number.isFinite(sec) || sec < 0) return "–";
-  if (sec < 90) return Math.round(sec) + " s";
-  const m = Math.floor(sec / 60); if (m < 90) return m + " min";
-  const h = Math.floor(m / 60); if (h < 48) return h + " h " + String(m % 60).padStart(2, "0");
-  return Math.floor(h / 24) + " d " + (h % 24) + " h";
-};
-const sfName = (st, id) => (st && st.attributes && st.attributes.friendly_name) || id;
-const sfMoreInfo = (el, entityId) => el.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
-
-// Base class. Subclasses provide: normalize(config) -> config, signature() -> string (cheap; the card re-renders only when it changes),
-// body() -> html string, title(), tag() (optional {cls,text}), css (optional), onAct(el, ev) for [data-act] clicks, tick (ms, optional timer).
-// Re-rendering never loops: it happens on (a) a new signature, (b) setConfig, (c) the optional timer, nothing else.
-class SFCard extends HTMLElement {
-  constructor() {
-    super(); this.attachShadow({ mode: "open" }); this._cfg = null; this._hass = null; this._sig = null; this._timer = null;
-    this.shadowRoot.addEventListener("click", (ev) => { const el = ev.target.closest && ev.target.closest("[data-act]"); if (el && this.onAct) this.onAct(el, ev); });
-    this.shadowRoot.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-act][role=button]")) { ev.preventDefault(); ev.target.click(); } });
-  }
-  setConfig(c) { if (!c || typeof c !== "object") throw new Error("Invalid configuration"); this._cfg = this.normalize(c); this._sig = null; this._draw(); }
-  set hass(h) { this._hass = h; if (!this._cfg) return; const s = this.signature(); if (s !== this._sig) { this._sig = s; this._draw(); } }
-  get hass() { return this._hass; }
-  connectedCallback() { if (this.tick && !this._timer) this._timer = setInterval(() => this._draw(), this.tick); }
-  disconnectedCallback() { if (this._timer) { clearInterval(this._timer); this._timer = null; } }
-  // Language: the card's own `language` option wins, otherwise the Home Assistant UI language (first two letters, e.g. zh-Hans -> zh).
-  _lang() { const o = this._cfg && this._cfg.language; return typeof o === "string" && o ? o.slice(0, 2).toLowerCase() : sfLang(this._hass); }
-  getCardSize() { return 3; }
-  _theme() { const t = this._cfg && this._cfg.theme; if (t === "light" || t === "dark") return t; return this._hass && this._hass.themes && this._hass.themes.darkMode === false ? "light" : "dark"; }
-  _draw() {
-    if (!this._cfg) return;
-    const root = this.shadowRoot, ae = root.activeElement;
-    const keep = ae && ae.id ? { id: ae.id, value: ae.value, s: ae.selectionStart, e: ae.selectionEnd } : null;
-    this.setAttribute("theme", this._theme()); this.setAttribute("dir", this._lang() === "ar" ? "rtl" : "ltr");
-    let inner;
-    try {
-      const tag = this.tag ? this.tag() : null, ttl = this.title() || "";
-      inner = `<div class="hud"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
-        ${ttl || tag ? `<div class="head"><span class="grow">${sfEsc(ttl)}</span>${tag ? `<span class="tag ${tag.cls}">${sfEsc(tag.text)}</span>` : ""}</div>` : ""}${this.body()}</div>`;
-    } catch (e) { inner = `<div class="hud"><div class="err">${sfEsc(this.constructor.name)}: ${sfEsc(e && e.message)}</div></div>`; }
-    root.innerHTML = `<style>${SF_BASE_CSS}${this.css || ""}</style>${inner}`;
-    if (keep) { const n = root.getElementById(keep.id); if (n) { if (n.value !== undefined && n.tagName === "INPUT" && n.type !== "range") n.value = keep.value; n.focus(); try { n.setSelectionRange(keep.s, keep.e); } catch (e) { /* not a text input */ } } }
-  }
-}
-const sfRegister = (tag, cls, name, description) => {
-  if (!customElements.get(tag)) customElements.define(tag, cls);
-  window.customCards = window.customCards || [];
-  if (!window.customCards.some((c) => c.type === tag)) window.customCards.push({ type: tag, name, description, preview: false });
-};
-// Pure logic: turns Home Assistant logbook entries into "who did it" rows. No DOM, no network.
-// A logbook entry carries the *context* of the state change: the user id of whoever called a service, the automation that ran,
-// the service name, the entity whose change caused it... or nothing at all when the device itself reported (a physical switch, a sensor).
-function trOrigin(e, users) {
-  const ev = e.context_event_type || "", dom = e.context_domain || "";
-  if (ev === "automation_triggered") return { kind: "automation", label: e.context_name || e.context_entity_id_name || e.context_entity_id || "automation", detail: e.context_message || "" };
-  if (e.context_user_id) {
-    const who = (users && users[e.context_user_id]) || "";
-    return { kind: "user", label: who || "user", detail: e.context_service ? (dom ? dom + "." : "") + e.context_service : "", unknown: !who };
-  }
-  if (dom === "script" || ev === "script_started") return { kind: "automation", label: e.context_name || e.context_entity_id_name || e.context_entity_id || "script", detail: e.context_message || "" };
-  if (ev === "call_service") return { kind: "service", label: (dom ? dom + "." : "") + (e.context_service || "service"), detail: "" };
-  if (ev === "state_changed" && (e.context_entity_id || e.context_entity_id_name)) return { kind: "entity", label: e.context_entity_id_name || e.context_entity_id, detail: e.context_message || "" };
-  return { kind: "device", label: "", detail: e.source || "" };
-}
-
-// Logbook timestamps are epoch seconds (float); accept milliseconds and ISO strings too.
-function trWhen(w) {
-  if (typeof w === "number") return w > 1e12 ? w : w * 1000;
-  const t = Date.parse(w); return Number.isFinite(t) ? t : NaN;
-}
-
-// Map user id -> display name, from person entities (always readable) merged with an optional admin listing.
-function trUsers(states, extra) {
-  const out = Object.assign({}, extra || {});
-  for (const id of Object.keys(states || {})) {
-    if (id.startsWith("person.")) { const a = states[id].attributes || {}; if (a.user_id) out[a.user_id] = a.friendly_name || id; }
-  }
-  return out;
-}
-
-const TR_GROUPS = { all: null, people: ["user"], automations: ["automation", "entity"], devices: ["device", "service"] };
-
-// entries -> rows (newest first), filtered by group, capped.
-function trRows(entries, { users, group = "all", limit = 12, entities = null, names = {} }) {
-  const keep = TR_GROUPS[group] || null, rows = [];
-  for (const e of Array.isArray(entries) ? entries : []) {
-    if (!e || !e.entity_id) continue;
-    if (entities && !entities.has(e.entity_id)) continue;
-    const t = trWhen(e.when); if (!Number.isFinite(t)) continue;
-    const o = trOrigin(e, users);
-    if (keep && !keep.includes(o.kind)) continue;
-    rows.push({ t, id: e.entity_id, name: e.name || names[e.entity_id] || e.entity_id, what: e.message || e.state || "", origin: o });
-  }
-  rows.sort((a, b) => b.t - a.t);
-  return rows.slice(0, limit);
-}
-const TR_I18N = {
-  en: { title: "Who did that?", all: "All", people: "People", automations: "Automations", devices: "Devices", none: "No change in the last {h} h", loading: "Loading…",
-        err: "Could not read the logbook", device: "the device itself", user: "someone", ago: "{age} ago", via: "via" },
-  fr: { title: "Qui a fait ça ?", all: "Tout", people: "Personnes", automations: "Automatisations", devices: "Appareils", none: "Aucun changement ces {h} dernières heures", loading: "Chargement…",
-        err: "Journal illisible", device: "l'appareil lui-même", user: "quelqu'un", ago: "il y a {age}", via: "via" },
-  de: { title: "Wer war das?", all: "Alle", people: "Personen", automations: "Automationen", devices: "Geräte", none: "Keine Änderung in den letzten {h} h", loading: "Lädt…",
-        err: "Logbuch nicht lesbar", device: "das Gerät selbst", user: "jemand", ago: "vor {age}", via: "über" },
-  es: { title: "¿Quién lo hizo?", all: "Todo", people: "Personas", automations: "Automatizaciones", devices: "Dispositivos", none: "Sin cambios en las últimas {h} h", loading: "Cargando…",
-        err: "No se puede leer el registro", device: "el propio dispositivo", user: "alguien", ago: "hace {age}", via: "vía" },
-  nl: {"title": "Wie deed dat?", "all": "Alles", "people": "Personen", "automations": "Automatiseringen", "devices": "Apparaten", "none": "Geen wijziging in de afgelopen {h} u", "loading": "Laden…", "err": "Logboek niet leesbaar", "device": "het apparaat zelf", "user": "iemand", "ago": "{age} geleden", "via": "via"},
-  it: {"title": "Chi l'ha fatto?", "all": "Tutto", "people": "Persone", "automations": "Automazioni", "devices": "Dispositivi", "none": "Nessuna modifica nelle ultime {h} h", "loading": "Caricamento…", "err": "Registro illeggibile", "device": "il dispositivo stesso", "user": "qualcuno", "ago": "{age} fa", "via": "tramite"},
-  pt: {"title": "Quem fez isto?", "all": "Tudo", "people": "Pessoas", "automations": "Automações", "devices": "Dispositivos", "none": "Sem alterações nas últimas {h} h", "loading": "A carregar…", "err": "Registo ilegível", "device": "o próprio dispositivo", "user": "alguém", "ago": "há {age}", "via": "via"},
-  pl: {"title": "Kto to zrobił?", "all": "Wszystko", "people": "Osoby", "automations": "Automatyzacje", "devices": "Urządzenia", "none": "Brak zmian w ostatnich {h} h", "loading": "Ładowanie…", "err": "Nie można odczytać dziennika", "device": "samo urządzenie", "user": "ktoś", "ago": "{age} temu", "via": "przez"},
-  ru: {"title": "Кто это сделал?", "all": "Все", "people": "Люди", "automations": "Автоматизации", "devices": "Устройства", "none": "Нет изменений за последние {h} ч", "loading": "Загрузка…", "err": "Не удалось прочитать журнал", "device": "само устройство", "user": "кто-то", "ago": "{age} назад", "via": "через"},
-  zh: {"title": "是谁做的？", "all": "全部", "people": "人员", "automations": "自动化", "devices": "设备", "none": "过去 {h} 小时内没有变化", "loading": "加载中…", "err": "无法读取日志", "device": "设备自身", "user": "某人", "ago": "{age}前", "via": "通过"},
-  ar: {"title": "من فعل ذلك؟", "all": "الكل", "people": "الأشخاص", "automations": "الأتمتة", "devices": "الأجهزة", "none": "لا تغييرات خلال آخر {h} ساعة", "loading": "جارٍ التحميل…", "err": "تعذّرت قراءة السجل", "device": "الجهاز نفسه", "user": "شخص ما", "ago": "منذ {age}", "via": "عبر"},
-};
-const TR_MIN_INTERVAL = 15000;   // never query the logbook more often than this, however many state changes arrive
-
-class SFTraceCard extends SFCard {
-  static getStubConfig() { return { entities: [], hours: 24 }; }
-  normalize(c) {
-    const list = [].concat(c.entities || [], c.entity || []).filter((x) => typeof x === "string");
-    this._group = "all"; this._events = []; this._error = false; this._inflight = false; this._dirty = true; this._last = 0; this._extraUsers = null; this._adminTried = false;
-    return { ...c, entities: list, hours: Math.min(168, Math.max(1, sfNum(c.hours, 24))), limit: Math.max(1, Math.min(50, Math.round(sfNum(c.limit, 12)))) };
-  }
-  get tick() { return 15000; }
-  signature() {
-    const st = this._hass ? this._hass.states : {};
-    const s = this._cfg.entities.map((id) => id + ":" + (st[id] ? st[id].last_changed : "-")).join("|") + this._theme();
-    if (s !== this._trSig) { this._trSig = s; this._dirty = true; }   // a watched entity changed -> logbook is worth re-reading (throttled)
-    return s;
-  }
-  title() { return this._cfg.title || sfT(TR_I18N, this._lang(), "title"); }
-  _draw() { this._maybeFetch(); super._draw(); }
-  _maybeFetch() {
-    if (!this._cfg || !this._hass || this._inflight || !this._dirty || !this._cfg.entities.length) return;
-    if (Date.now() - this._last < TR_MIN_INTERVAL) return;
-    this._inflight = true; this._dirty = false; this._last = Date.now();
-    const end = new Date(), start = new Date(end.getTime() - this._cfg.hours * 3600e3);
-    const h = this._hass;
-    const users = !this._adminTried && h.callWS ? (this._adminTried = true, Promise.resolve().then(() => h.callWS({ type: "config/auth/list" })).then((l) => { const m = {}; for (const u of l || []) m[u.id] = u.name; this._extraUsers = m; }).catch(() => {})) : Promise.resolve();
-    users.then(() => h.callWS({ type: "logbook/get_events", start_time: start.toISOString(), end_time: end.toISOString(), entity_ids: this._cfg.entities }))
-      .then((ev) => { this._events = Array.isArray(ev) ? ev : []; this._error = false; })
-      .catch(() => { this._error = true; })
-      .finally(() => { this._inflight = false; super._draw(); });
-  }
-  get css() { return `
+`,d=e=>String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t]),g=(e,t=NaN)=>{const i=parseFloat(e);return Number.isFinite(i)?i:t},w=e=>String(e&&(e.locale?.language||e.language)||"en").slice(0,2).toLowerCase(),u=(e,t,i,s)=>{let a=(e[t]&&e[t][i])??(e.en&&e.en[i])??i;if(s)for(const r of Object.keys(s))a=a.split("{"+r+"}").join(t==="ar"?"\u2066"+s[r]+"\u2069":String(s[r]));return a},y=e=>{if(!Number.isFinite(e)||e<0)return"\u2013";if(e<90)return Math.round(e)+" s";const t=Math.floor(e/60);if(t<90)return t+" min";const i=Math.floor(t/60);return i<48?i+" h "+String(t%60).padStart(2,"0"):Math.floor(i/24)+" d "+i%24+" h"},k=(e,t)=>e&&e.attributes&&e.attributes.friendly_name||t,S=(e,t)=>e.dispatchEvent(new CustomEvent("hass-more-info",{detail:{entityId:t},bubbles:!0,composed:!0}));class A extends HTMLElement{constructor(){super(),this.attachShadow({mode:"open"}),this._cfg=null,this._hass=null,this._sig=null,this._timer=null,this.shadowRoot.addEventListener("click",t=>{const i=t.target.closest&&t.target.closest("[data-act]");i&&this.onAct&&this.onAct(i,t)}),this.shadowRoot.addEventListener("keydown",t=>{(t.key==="Enter"||t.key===" ")&&t.target.matches&&t.target.matches("[data-act][role=button]")&&(t.preventDefault(),t.target.click())})}setConfig(t){if(!t||typeof t!="object")throw new Error("Invalid configuration");this._cfg=this.normalize(t),this._sig=null,this._draw()}set hass(t){if(this._hass=t,!this._cfg)return;const i=this.signature();i!==this._sig&&(this._sig=i,this._draw())}get hass(){return this._hass}connectedCallback(){this.tick&&!this._timer&&(this._timer=setInterval(()=>this._draw(),this.tick))}disconnectedCallback(){this._timer&&(clearInterval(this._timer),this._timer=null)}_lang(){const t=this._cfg&&this._cfg.language;return typeof t=="string"&&t?t.slice(0,2).toLowerCase():w(this._hass)}getCardSize(){return 3}_theme(){const t=this._cfg&&this._cfg.theme;return t==="light"||t==="dark"?t:this._hass&&this._hass.themes&&this._hass.themes.darkMode===!1?"light":"dark"}_draw(){if(!this._cfg)return;const t=this.shadowRoot,i=t.activeElement,s=i&&i.id?{id:i.id,value:i.value,s:i.selectionStart,e:i.selectionEnd}:null;this.setAttribute("theme",this._theme()),this.setAttribute("dir",this._lang()==="ar"?"rtl":"ltr");let a;try{const r=this.tag?this.tag():null,c=this.title()||"";a=`<div class="hud"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+        ${c||r?`<div class="head"><span class="grow">${d(c)}</span>${r?`<span class="tag ${r.cls}">${d(r.text)}</span>`:""}</div>`:""}${this.body()}</div>`}catch(r){a=`<div class="hud"><div class="err">${d(this.constructor.name)}: ${d(r&&r.message)}</div></div>`}if(t.innerHTML=`<style>${x}${this.css||""}</style>${a}`,s){const r=t.getElementById(s.id);if(r){r.value!==void 0&&r.tagName==="INPUT"&&r.type!=="range"&&(r.value=s.value),r.focus();try{r.setSelectionRange(s.s,s.e)}catch{}}}}}const z=(e,t,i,s)=>{customElements.get(e)||customElements.define(e,t),window.customCards=window.customCards||[],window.customCards.some(a=>a.type===e)||window.customCards.push({type:e,name:i,description:s,preview:!1})};function p(e,t){const i=e.context_event_type||"",s=e.context_domain||"";if(i==="automation_triggered")return{kind:"automation",label:e.context_name||e.context_entity_id_name||e.context_entity_id||"automation",detail:e.context_message||""};if(e.context_user_id){const a=t&&t[e.context_user_id]||"";return{kind:"user",label:a||"user",detail:e.context_service?(s?s+".":"")+e.context_service:"",unknown:!a}}return s==="script"||i==="script_started"?{kind:"automation",label:e.context_name||e.context_entity_id_name||e.context_entity_id||"script",detail:e.context_message||""}:i==="call_service"?{kind:"service",label:(s?s+".":"")+(e.context_service||"service"),detail:""}:i==="state_changed"&&(e.context_entity_id||e.context_entity_id_name)?{kind:"entity",label:e.context_entity_id_name||e.context_entity_id,detail:e.context_message||""}:{kind:"device",label:"",detail:e.source||""}}function m(e){if(typeof e=="number")return e>1e12?e:e*1e3;const t=Date.parse(e);return Number.isFinite(t)?t:NaN}function b(e,t){const i=Object.assign({},t||{});for(const s of Object.keys(e||{}))if(s.startsWith("person.")){const a=e[s].attributes||{};a.user_id&&(i[a.user_id]=a.friendly_name||s)}return i}const $={all:null,people:["user"],automations:["automation","entity"],devices:["device","service"]};function _(e,{users:t,group:i="all",limit:s=12,entities:a=null,names:r={}}){const c=$[i]||null,h=[];for(const o of Array.isArray(e)?e:[]){if(!o||!o.entity_id||a&&!a.has(o.entity_id))continue;const n=m(o.when);if(!Number.isFinite(n))continue;const l=p(o,t);c&&!c.includes(l.kind)||h.push({t:n,id:o.entity_id,name:o.name||r[o.entity_id]||o.entity_id,what:o.message||o.state||"",origin:l})}return h.sort((o,n)=>n.t-o.t),h.slice(0,s)}const f={en:{title:"Who did that?",all:"All",people:"People",automations:"Automations",devices:"Devices",none:"No change in the last {h} h",loading:"Loading\u2026",err:"Could not read the logbook",device:"the device itself",user:"someone",ago:"{age} ago",via:"via"},fr:{title:"Qui a fait \xE7a ?",all:"Tout",people:"Personnes",automations:"Automatisations",devices:"Appareils",none:"Aucun changement ces {h} derni\xE8res heures",loading:"Chargement\u2026",err:"Journal illisible",device:"l'appareil lui-m\xEAme",user:"quelqu'un",ago:"il y a {age}",via:"via"},de:{title:"Wer war das?",all:"Alle",people:"Personen",automations:"Automationen",devices:"Ger\xE4te",none:"Keine \xC4nderung in den letzten {h} h",loading:"L\xE4dt\u2026",err:"Logbuch nicht lesbar",device:"das Ger\xE4t selbst",user:"jemand",ago:"vor {age}",via:"\xFCber"},es:{title:"\xBFQui\xE9n lo hizo?",all:"Todo",people:"Personas",automations:"Automatizaciones",devices:"Dispositivos",none:"Sin cambios en las \xFAltimas {h} h",loading:"Cargando\u2026",err:"No se puede leer el registro",device:"el propio dispositivo",user:"alguien",ago:"hace {age}",via:"v\xEDa"},nl:{title:"Wie deed dat?",all:"Alles",people:"Personen",automations:"Automatiseringen",devices:"Apparaten",none:"Geen wijziging in de afgelopen {h} u",loading:"Laden\u2026",err:"Logboek niet leesbaar",device:"het apparaat zelf",user:"iemand",ago:"{age} geleden",via:"via"},it:{title:"Chi l'ha fatto?",all:"Tutto",people:"Persone",automations:"Automazioni",devices:"Dispositivi",none:"Nessuna modifica nelle ultime {h} h",loading:"Caricamento\u2026",err:"Registro illeggibile",device:"il dispositivo stesso",user:"qualcuno",ago:"{age} fa",via:"tramite"},pt:{title:"Quem fez isto?",all:"Tudo",people:"Pessoas",automations:"Automa\xE7\xF5es",devices:"Dispositivos",none:"Sem altera\xE7\xF5es nas \xFAltimas {h} h",loading:"A carregar\u2026",err:"Registo ileg\xEDvel",device:"o pr\xF3prio dispositivo",user:"algu\xE9m",ago:"h\xE1 {age}",via:"via"},pl:{title:"Kto to zrobi\u0142?",all:"Wszystko",people:"Osoby",automations:"Automatyzacje",devices:"Urz\u0105dzenia",none:"Brak zmian w ostatnich {h} h",loading:"\u0141adowanie\u2026",err:"Nie mo\u017Cna odczyta\u0107 dziennika",device:"samo urz\u0105dzenie",user:"kto\u015B",ago:"{age} temu",via:"przez"},ru:{title:"\u041A\u0442\u043E \u044D\u0442\u043E \u0441\u0434\u0435\u043B\u0430\u043B?",all:"\u0412\u0441\u0435",people:"\u041B\u044E\u0434\u0438",automations:"\u0410\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0437\u0430\u0446\u0438\u0438",devices:"\u0423\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430",none:"\u041D\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u0437\u0430 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0435 {h} \u0447",loading:"\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430\u2026",err:"\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0436\u0443\u0440\u043D\u0430\u043B",device:"\u0441\u0430\u043C\u043E \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",user:"\u043A\u0442\u043E-\u0442\u043E",ago:"{age} \u043D\u0430\u0437\u0430\u0434",via:"\u0447\u0435\u0440\u0435\u0437"},zh:{title:"\u662F\u8C01\u505A\u7684\uFF1F",all:"\u5168\u90E8",people:"\u4EBA\u5458",automations:"\u81EA\u52A8\u5316",devices:"\u8BBE\u5907",none:"\u8FC7\u53BB {h} \u5C0F\u65F6\u5185\u6CA1\u6709\u53D8\u5316",loading:"\u52A0\u8F7D\u4E2D\u2026",err:"\u65E0\u6CD5\u8BFB\u53D6\u65E5\u5FD7",device:"\u8BBE\u5907\u81EA\u8EAB",user:"\u67D0\u4EBA",ago:"{age}\u524D",via:"\u901A\u8FC7"},ar:{title:"\u0645\u0646 \u0641\u0639\u0644 \u0630\u0644\u0643\u061F",all:"\u0627\u0644\u0643\u0644",people:"\u0627\u0644\u0623\u0634\u062E\u0627\u0635",automations:"\u0627\u0644\u0623\u062A\u0645\u062A\u0629",devices:"\u0627\u0644\u0623\u062C\u0647\u0632\u0629",none:"\u0644\u0627 \u062A\u063A\u064A\u064A\u0631\u0627\u062A \u062E\u0644\u0627\u0644 \u0622\u062E\u0631 {h} \u0633\u0627\u0639\u0629",loading:"\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644\u2026",err:"\u062A\u0639\u0630\u0651\u0631\u062A \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0633\u062C\u0644",device:"\u0627\u0644\u062C\u0647\u0627\u0632 \u0646\u0641\u0633\u0647",user:"\u0634\u062E\u0635 \u0645\u0627",ago:"\u0645\u0646\u0630 {age}",via:"\u0639\u0628\u0631"}},C=15e3;class T extends A{static getStubConfig(){return{entities:[],hours:24}}normalize(t){const i=[].concat(t.entities||[],t.entity||[]).filter(s=>typeof s=="string");return this._group="all",this._events=[],this._error=!1,this._inflight=!1,this._dirty=!0,this._last=0,this._extraUsers=null,this._adminTried=!1,{...t,entities:i,hours:Math.min(168,Math.max(1,g(t.hours,24))),limit:Math.max(1,Math.min(50,Math.round(g(t.limit,12))))}}get tick(){return 15e3}signature(){const t=this._hass?this._hass.states:{},i=this._cfg.entities.map(s=>s+":"+(t[s]?t[s].last_changed:"-")).join("|")+this._theme();return i!==this._trSig&&(this._trSig=i,this._dirty=!0),i}title(){return this._cfg.title||u(f,this._lang(),"title")}_draw(){this._maybeFetch(),super._draw()}_maybeFetch(){if(!this._cfg||!this._hass||this._inflight||!this._dirty||!this._cfg.entities.length||Date.now()-this._last<C)return;this._inflight=!0,this._dirty=!1,this._last=Date.now();const t=new Date,i=new Date(t.getTime()-this._cfg.hours*36e5),s=this._hass;(!this._adminTried&&s.callWS?(this._adminTried=!0,Promise.resolve().then(()=>s.callWS({type:"config/auth/list"})).then(r=>{const c={};for(const h of r||[])c[h.id]=h.name;this._extraUsers=c}).catch(()=>{})):Promise.resolve()).then(()=>s.callWS({type:"logbook/get_events",start_time:i.toISOString(),end_time:t.toISOString(),entity_ids:this._cfg.entities})).then(r=>{this._events=Array.isArray(r)?r:[],this._error=!1}).catch(()=>{this._error=!0}).finally(()=>{this._inflight=!1,super._draw()})}get css(){return`
     .flt { display:flex; flex-wrap:wrap; gap:6px; margin:-4px 0 10px; } .flt button { font-size:11px; padding:3px 10px; border-radius:20px; }
     .flt button.on { background:rgb(var(--sf-cyan-rgb) / .28); border-color:var(--sf-cyan); color:var(--sf-strong); }
     .row { display:grid; grid-template-columns:minmax(76px,max-content) 1fr auto; gap:4px 10px; align-items:center; padding:8px 4px; border-top:1px solid rgb(var(--sf-cyan-rgb) / .12); }
@@ -201,34 +40,7 @@ class SFTraceCard extends SFCard {
     .nm { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sf-strong); } .nm small { color:var(--sf-dim); margin-left:6px; }
     .who { font-size:11px; padding:2px 9px; border-radius:20px; border:1px solid currentColor; white-space:nowrap; max-width:46vw; overflow:hidden; text-overflow:ellipsis; }
     .who.user { color:var(--sf-cyan); } .who.automation, .who.entity { color:var(--sf-amber); } .who.service { color:var(--sf-violet); } .who.device { color:var(--sf-grey); }
-    .det { grid-column:2 / 4; color:var(--sf-dim); font-size:10.5px; line-height:1.6; margin-top:-2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }`; }
-  body() {
-    const L = this._lang(), t = (k, v) => sfT(TR_I18N, L, k, v), c = this._cfg;
-    if (!c.entities.length) return `<div class="empty">entities: [ … ]</div>`;
-    const users = trUsers(this._hass ? this._hass.states : {}, this._extraUsers);
-    const names = {}; for (const id of c.entities) { const s = this._hass && this._hass.states[id]; if (s) names[id] = sfName(s, id); }
-    const rows = trRows(this._events, { users, group: this._group, limit: c.limit, entities: new Set(c.entities), names });
-    const now = Date.now();
-    let h = `<div class="flt">${["all", "people", "automations", "devices"].map((g) => `<button data-act="grp" data-g="${g}" class="${this._group === g ? "on" : ""}" aria-pressed="${this._group === g}">${sfEsc(t(g))}</button>`).join("")}</div>`;
-    if (this._error) h += `<div class="err">${sfEsc(t("err"))}</div>`;
-    if (!rows.length) return h + `<div class="empty">${sfEsc(this._inflight && !this._events.length ? t("loading") : t("none", { h: c.hours }))}</div>`;
-    for (const r of rows) {
-      const o = r.origin, d = new Date(r.t);
-      const label = o.kind === "device" ? t("device") : o.kind === "user" && o.unknown ? t("user") : o.label;
-      const hh = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-      h += `<div class="row" data-act="info" data-id="${sfEsc(r.id)}" role="button" tabindex="0">
-        <span class="t"><b>${hh}</b>${sfEsc(t("ago", { age: sfAge((now - r.t) / 1000) }))}</span>
-        <span class="nm">${sfEsc(r.name)}<small>${sfEsc(r.what)}</small></span><span class="who ${o.kind}" title="${sfEsc(o.detail)}">${sfEsc(label)}</span>
-        ${o.detail ? `<span class="det">${o.kind === "user" ? sfEsc(t("via")) + " " : ""}${sfEsc(o.detail)}</span>` : ""}</div>`;
-    }
-    return h;
-  }
-  onAct(el) {
-    if (el.dataset.act === "info") sfMoreInfo(this, el.dataset.id);
-    else if (el.dataset.act === "grp") { this._group = el.dataset.g; super._draw(); }
-  }
-}
-sfRegister("sf-trace-card", SFTraceCard, "SF Trace", "Shows who or what changed an entity: a person, an automation, a service call, or the device itself.");
-window.__sfTrace = { i18n: TR_I18N, origin: trOrigin, rows: trRows, users: trUsers, when: trWhen };   // exposed for the test page only
-
-})();
+    .det { grid-column:2 / 4; color:var(--sf-dim); font-size:10.5px; line-height:1.6; margin-top:-2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }`}body(){const t=this._lang(),i=(n,l)=>u(f,t,n,l),s=this._cfg;if(!s.entities.length)return'<div class="empty">entities: [ \u2026 ]</div>';const a=b(this._hass?this._hass.states:{},this._extraUsers),r={};for(const n of s.entities){const l=this._hass&&this._hass.states[n];l&&(r[n]=k(l,n))}const c=_(this._events,{users:a,group:this._group,limit:s.limit,entities:new Set(s.entities),names:r}),h=Date.now();let o=`<div class="flt">${["all","people","automations","devices"].map(n=>`<button data-act="grp" data-g="${n}" class="${this._group===n?"on":""}" aria-pressed="${this._group===n}">${d(i(n))}</button>`).join("")}</div>`;if(this._error&&(o+=`<div class="err">${d(i("err"))}</div>`),!c.length)return o+`<div class="empty">${d(this._inflight&&!this._events.length?i("loading"):i("none",{h:s.hours}))}</div>`;for(const n of c){const l=n.origin,v=new Date(n.t),N=l.kind==="device"?i("device"):l.kind==="user"&&l.unknown?i("user"):l.label,R=String(v.getHours()).padStart(2,"0")+":"+String(v.getMinutes()).padStart(2,"0");o+=`<div class="row" data-act="info" data-id="${d(n.id)}" role="button" tabindex="0">
+        <span class="t"><b>${R}</b>${d(i("ago",{age:y((h-n.t)/1e3)}))}</span>
+        <span class="nm">${d(n.name)}<small>${d(n.what)}</small></span><span class="who ${l.kind}" title="${d(l.detail)}">${d(N)}</span>
+        ${l.detail?`<span class="det">${l.kind==="user"?d(i("via"))+" ":""}${d(l.detail)}</span>`:""}</div>`}return o}onAct(t){t.dataset.act==="info"?S(this,t.dataset.id):t.dataset.act==="grp"&&(this._group=t.dataset.g,super._draw())}}z("sf-trace-card",T,"SF Trace","Shows who or what changed an entity: a person, an automation, a service call, or the device itself."),window.__sfTrace={i18n:f,origin:p,rows:_,users:b,when:m}})();
